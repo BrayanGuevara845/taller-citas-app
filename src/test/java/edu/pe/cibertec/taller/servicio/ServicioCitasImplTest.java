@@ -1,11 +1,13 @@
 package edu.pe.cibertec.taller.servicio;
 
+import edu.pe.cibertec.taller.excepcion.CitaNoCancelableException;
 import edu.pe.cibertec.taller.excepcion.EspecialidadIncorrectaException;
 import edu.pe.cibertec.taller.excepcion.HorarioNoPermitidoException;
 import edu.pe.cibertec.taller.excepcion.MecanicoNoEncontradoException;
 import edu.pe.cibertec.taller.modelo.Cita;
 import edu.pe.cibertec.taller.modelo.EstadoCita;
 import edu.pe.cibertec.taller.modelo.Mecanico;
+import edu.pe.cibertec.taller.modelo.ResultadoCancelacion;
 import edu.pe.cibertec.taller.modelo.TipoServicio;
 import edu.pe.cibertec.taller.repositorio.RepositorioCitas;
 import edu.pe.cibertec.taller.repositorio.RepositorioMecanicos;
@@ -25,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -309,5 +312,113 @@ class ServicioCitasImplTest {
 		verify(repositorioCitas, never()).save(any(Cita.class));
 		verify(servicioNotificaciones, never())
 				.notificarCitaAgendada(any(Cita.class));
+	}
+
+	@Test
+	@DisplayName("Cancelar exactamente 24 horas antes no aplica penalidad")
+	void cancelarCitaExactamenteVeinticuatroHorasAntes() {
+		// Arrange
+		Long idCitaZafiro = 10L;
+		LocalDateTime fechaCancelacion =
+				LocalDateTime.of(2026, 9, 13, 10, 0);
+
+		Cita cita = new Cita();
+		cita.setId(idCitaZafiro);
+		cita.setMecanico(mecanico);
+		cita.setPlacaVehiculo(PLACA);
+		cita.setTipoServicio(TipoServicio.CAMBIO_ACEITE);
+		cita.setFechaHoraInicio(FECHA_CITA);
+		cita.setDuracionHoras(
+				TipoServicio.CAMBIO_ACEITE.getDuracionHoras()
+		);
+		cita.setEstado(EstadoCita.PROGRAMADA);
+
+		when(repositorioCitas.findById(idCitaZafiro))
+				.thenReturn(Optional.of(cita));
+
+		when(proveedorFechaHora.ahora())
+				.thenReturn(fechaCancelacion);
+
+		// Act
+		ResultadoCancelacion resultado =
+				servicioCitas.cancelarCita(idCitaZafiro);
+
+		// Assert
+		assertTrue(resultado.isExitoso());
+		assertEquals(0.0, resultado.getMontoPenalidad());
+		assertEquals(EstadoCita.CANCELADA, cita.getEstado());
+		verify(repositorioCitas, times(1)).save(cita);
+		verify(servicioNotificaciones, times(1))
+				.notificarCitaCancelada(cita);
+	}
+
+	@Test
+	@DisplayName("Cancelar dos horas antes aplica penalidad de 50")
+	void cancelarCitaDosHorasAntes() {
+		// Arrange
+		Long idCitaZafiro = 11L;
+		LocalDateTime fechaCancelacion =
+				LocalDateTime.of(2026, 9, 14, 8, 0);
+
+		Cita cita = new Cita();
+		cita.setId(idCitaZafiro);
+		cita.setMecanico(mecanico);
+		cita.setPlacaVehiculo(PLACA);
+		cita.setTipoServicio(TipoServicio.CAMBIO_ACEITE);
+		cita.setFechaHoraInicio(FECHA_CITA);
+		cita.setDuracionHoras(
+				TipoServicio.CAMBIO_ACEITE.getDuracionHoras()
+		);
+		cita.setEstado(EstadoCita.PROGRAMADA);
+
+		when(repositorioCitas.findById(idCitaZafiro))
+				.thenReturn(Optional.of(cita));
+
+		when(proveedorFechaHora.ahora())
+				.thenReturn(fechaCancelacion);
+
+		// Act
+		ResultadoCancelacion resultado =
+				servicioCitas.cancelarCita(idCitaZafiro);
+
+		// Assert
+		assertTrue(resultado.isExitoso());
+		assertEquals(50.0, resultado.getMontoPenalidad());
+		assertEquals(EstadoCita.CANCELADA, cita.getEstado());
+		verify(repositorioCitas, times(1)).save(cita);
+		verify(servicioNotificaciones, times(1))
+				.notificarCitaCancelada(cita);
+	}
+
+	@Test
+	@DisplayName("Cancelar una cita atendida lanza CitaNoCancelableException")
+	void cancelarCitaAtendida() {
+		// Arrange
+		Long idCitaZafiro = 12L;
+
+		Cita cita = new Cita();
+		cita.setId(idCitaZafiro);
+		cita.setMecanico(mecanico);
+		cita.setPlacaVehiculo(PLACA);
+		cita.setTipoServicio(TipoServicio.CAMBIO_ACEITE);
+		cita.setFechaHoraInicio(FECHA_CITA);
+		cita.setDuracionHoras(
+				TipoServicio.CAMBIO_ACEITE.getDuracionHoras()
+		);
+		cita.setEstado(EstadoCita.ATENDIDA);
+
+		when(repositorioCitas.findById(idCitaZafiro))
+				.thenReturn(Optional.of(cita));
+
+		// Act
+		Executable accion =
+				() -> servicioCitas.cancelarCita(idCitaZafiro);
+
+		// Assert
+		assertThrows(CitaNoCancelableException.class, accion);
+		assertEquals(EstadoCita.ATENDIDA, cita.getEstado());
+		verify(repositorioCitas, never()).save(any(Cita.class));
+		verify(servicioNotificaciones, never())
+				.notificarCitaCancelada(any(Cita.class));
 	}
 }
