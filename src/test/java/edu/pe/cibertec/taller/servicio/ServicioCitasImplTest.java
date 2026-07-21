@@ -1,6 +1,7 @@
 package edu.pe.cibertec.taller.servicio;
 
 import edu.pe.cibertec.taller.excepcion.EspecialidadIncorrectaException;
+import edu.pe.cibertec.taller.excepcion.HorarioNoPermitidoException;
 import edu.pe.cibertec.taller.excepcion.MecanicoNoEncontradoException;
 import edu.pe.cibertec.taller.modelo.Cita;
 import edu.pe.cibertec.taller.modelo.EstadoCita;
@@ -72,7 +73,7 @@ class ServicioCitasImplTest {
 	}
 
 	@Test
-	@DisplayName("Agendar una cita valida la guarda, notifica y la retorna en estado PROGRAMADA")
+	@DisplayName("Agendar una cita valida la guarda, notifica y retorna programada")
 	void agendarCitaExitosa() {
 		// Arrange
 		String placaZafiro = PLACA;
@@ -111,7 +112,7 @@ class ServicioCitasImplTest {
 	}
 
 	@Test
-	@DisplayName("Agendar con un mecanico inexistente lanza MecanicoNoEncontradoException")
+	@DisplayName("Agendar con mecanico inexistente lanza la excepcion correspondiente")
 	void agendarConMecanicoInexistente() {
 		// Arrange
 		Long idMecanicoZafiro = 99L;
@@ -133,7 +134,7 @@ class ServicioCitasImplTest {
 	}
 
 	@Test
-	@DisplayName("Agendar cuando la especialidad no coincide lanza EspecialidadIncorrectaException")
+	@DisplayName("Agendar con especialidad incorrecta lanza la excepcion correspondiente")
 	void agendarConEspecialidadIncorrecta() {
 		// Arrange
 		TipoServicio servicioZafiro = TipoServicio.REPARACION_MOTOR;
@@ -152,5 +153,161 @@ class ServicioCitasImplTest {
 		// Assert
 		assertThrows(EspecialidadIncorrectaException.class, accion);
 		verify(repositorioCitas, never()).save(any(Cita.class));
+	}
+
+	@Test
+	@DisplayName("Reparacion de motor a las 07:00 no esta permitida")
+	void agendarReparacionMotorALasSiete() {
+		// Arrange
+		LocalDateTime horarioZafiro =
+				LocalDateTime.of(2026, 9, 14, 7, 0);
+
+		Mecanico mecanicoMotor = new Mecanico(
+				ID_MECANICO,
+				"Brayan Guevara",
+				TipoServicio.REPARACION_MOTOR
+		);
+
+		when(repositorioMecanicos.findById(ID_MECANICO))
+				.thenReturn(Optional.of(mecanicoMotor));
+
+		// Act
+		Executable accion = () -> servicioCitas.agendarCita(
+				ID_MECANICO,
+				PLACA,
+				TipoServicio.REPARACION_MOTOR,
+				horarioZafiro
+		);
+
+		// Assert
+		assertThrows(HorarioNoPermitidoException.class, accion);
+		verify(repositorioCitas, never()).save(any(Cita.class));
+		verify(servicioNotificaciones, never())
+				.notificarCitaAgendada(any(Cita.class));
+	}
+
+	@Test
+	@DisplayName("Reparacion de motor a las 08:00 se registra correctamente")
+	void agendarReparacionMotorALasOcho() {
+		// Arrange
+		LocalDateTime horarioZafiro =
+				LocalDateTime.of(2026, 9, 14, 8, 0);
+
+		Mecanico mecanicoMotor = new Mecanico(
+				ID_MECANICO,
+				"Brayan Guevara",
+				TipoServicio.REPARACION_MOTOR
+		);
+
+		when(repositorioMecanicos.findById(ID_MECANICO))
+				.thenReturn(Optional.of(mecanicoMotor));
+
+		when(proveedorFechaHora.ahora())
+				.thenReturn(FECHA_ACTUAL);
+
+		when(repositorioCitas.findByMecanicoIdAndEstado(
+				ID_MECANICO,
+				EstadoCita.PROGRAMADA
+		)).thenReturn(List.of());
+
+		when(repositorioCitas.save(any(Cita.class)))
+				.thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		// Act
+		Cita resultado = servicioCitas.agendarCita(
+				ID_MECANICO,
+				PLACA,
+				TipoServicio.REPARACION_MOTOR,
+				horarioZafiro
+		);
+
+		// Assert
+		assertEquals(EstadoCita.PROGRAMADA, resultado.getEstado());
+		assertEquals(horarioZafiro, resultado.getFechaHoraInicio());
+		assertEquals(
+				TipoServicio.REPARACION_MOTOR.getDuracionHoras(),
+				resultado.getDuracionHoras()
+		);
+		verify(repositorioCitas, times(1)).save(any(Cita.class));
+		verify(servicioNotificaciones, times(1))
+				.notificarCitaAgendada(any(Cita.class));
+	}
+
+	@Test
+	@DisplayName("Reparacion de motor a las 11:00 se registra correctamente")
+	void agendarReparacionMotorALasOnce() {
+		// Arrange
+		LocalDateTime horarioZafiro =
+				LocalDateTime.of(2026, 9, 14, 11, 0);
+
+		Mecanico mecanicoMotor = new Mecanico(
+				ID_MECANICO,
+				"Brayan Guevara",
+				TipoServicio.REPARACION_MOTOR
+		);
+
+		when(repositorioMecanicos.findById(ID_MECANICO))
+				.thenReturn(Optional.of(mecanicoMotor));
+
+		when(proveedorFechaHora.ahora())
+				.thenReturn(FECHA_ACTUAL);
+
+		when(repositorioCitas.findByMecanicoIdAndEstado(
+				ID_MECANICO,
+				EstadoCita.PROGRAMADA
+		)).thenReturn(List.of());
+
+		when(repositorioCitas.save(any(Cita.class)))
+				.thenAnswer(invocacion -> invocacion.getArgument(0));
+
+		// Act
+		Cita resultado = servicioCitas.agendarCita(
+				ID_MECANICO,
+				PLACA,
+				TipoServicio.REPARACION_MOTOR,
+				horarioZafiro
+		);
+
+		// Assert
+		assertEquals(EstadoCita.PROGRAMADA, resultado.getEstado());
+		assertEquals(horarioZafiro, resultado.getFechaHoraInicio());
+		assertEquals(
+				TipoServicio.REPARACION_MOTOR.getDuracionHoras(),
+				resultado.getDuracionHoras()
+		);
+		verify(repositorioCitas, times(1)).save(any(Cita.class));
+		verify(servicioNotificaciones, times(1))
+				.notificarCitaAgendada(any(Cita.class));
+	}
+
+	@Test
+	@DisplayName("Reparacion de motor a las 12:00 no esta permitida")
+	void agendarReparacionMotorALasDoce() {
+		// Arrange
+		LocalDateTime horarioZafiro =
+				LocalDateTime.of(2026, 9, 14, 12, 0);
+
+		Mecanico mecanicoMotor = new Mecanico(
+				ID_MECANICO,
+				"Brayan Guevara",
+				TipoServicio.REPARACION_MOTOR
+		);
+
+		when(repositorioMecanicos.findById(ID_MECANICO))
+				.thenReturn(Optional.of(mecanicoMotor));
+
+		// Act
+		Executable accion = () -> servicioCitas.agendarCita(
+				ID_MECANICO,
+				PLACA,
+				TipoServicio.REPARACION_MOTOR,
+				horarioZafiro
+		);
+
+		// Assert
+		assertThrows(HorarioNoPermitidoException.class, accion);
+		verify(repositorioCitas, never()).save(any(Cita.class));
+		verify(servicioNotificaciones, never())
+				.notificarCitaAgendada(any(Cita.class));
 	}
 }
